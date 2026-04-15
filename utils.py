@@ -1,6 +1,7 @@
 import torch
 import Levenshtein
 
+
 def load_data(img_file, label_file):
     with open(img_file, "r", encoding="utf-8") as f:
         images = f.read().splitlines()
@@ -21,8 +22,8 @@ def create_vocab(labels):
 
 class SimpleConverter:
     def __init__(self, vocab):
-        self.char2idx = {c: i+1 for i, c in enumerate(vocab)}  # 0 = blank
-        self.idx2char = {i+1: c for i, c in enumerate(vocab)}
+        self.char2idx = {c: i + 1 for i, c in enumerate(vocab)}  # 0 = blank
+        self.idx2char = {i + 1: c for i, c in enumerate(vocab)}
 
     def encode_batch(self, texts):
         targets = []
@@ -37,26 +38,33 @@ class SimpleConverter:
         lengths = torch.tensor(lengths, dtype=torch.long)
 
         return targets, lengths
-    
+
+
 def decode(preds, converter):
-        preds = preds.argmax(2)  # (T, B)
-        preds = preds.permute(1, 0)  # (B, T)
+    """
+    CTC greedy decode.
+    BUG FIX: results.append(text) was outside the for-loop due to wrong
+    indentation, so only the very last sequence was ever appended.
+    """
+    preds = preds.argmax(2)   # (T, B)
+    preds = preds.permute(1, 0)  # (B, T)
 
-        results = []
- 
-        for seq in preds:
-            prev = -1
-            text = ""
+    results = []
 
-            for i in seq:
-                i = i.item()
-                if i != prev and i != 0:
-                    text += converter.idx2char.get(i, "")
-                prev = i
+    for seq in preds:
+        prev = -1
+        text = ""
 
-        results.append(text)
+        for i in seq:
+            i = i.item()
+            if i != prev and i != 0:
+                text += converter.idx2char.get(i, "")
+            prev = i
 
-        return results
+        results.append(text)   # ← now correctly inside the outer loop
+
+    return results
+
 
 def compute_cer(preds, gts):
     total_dist = 0

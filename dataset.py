@@ -1,6 +1,7 @@
 from PIL import Image
 from torch.utils.data import Dataset
 
+
 class MarathiDataset(Dataset):
     def __init__(self, image_paths, labels, transform=None):
         self.image_paths = image_paths
@@ -11,20 +12,23 @@ class MarathiDataset(Dataset):
         return len(self.image_paths)
 
     def __getitem__(self, idx):
-        img_path = self.image_paths[idx]
-        label = self.labels[idx]
+        # Use a visited set to avoid infinite recursion on a mostly-broken dataset
+        for attempt in range(len(self)):
+            i = (idx + attempt) % len(self)
+            img_path = self.image_paths[i]
+            label = self.labels[i]
 
-        # Skip empty labels
-        if label.strip() == "":
-            return self.__getitem__((idx + 1) % len(self))
+            if label.strip() == "":
+                continue
 
-        try:
-            image = Image.open(img_path).convert("RGB")
-        except:
-            # Skip broken images
-            return self.__getitem__((idx + 1) % len(self))
+            try:
+                image = Image.open(img_path).convert("RGB")
+            except Exception:
+                continue
 
-        if self.transform:
-            image = self.transform(image)
+            if self.transform:
+                image = self.transform(image)
 
-        return image, label
+            return image, label
+
+        raise RuntimeError("No valid samples found in the entire dataset.")
