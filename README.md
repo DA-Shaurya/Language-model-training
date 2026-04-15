@@ -9,7 +9,7 @@ The model (`model.py`) is built using a standard CRNN approach:
 - **Transcription:** A fully connected linear layer followed by `CTCLoss` for alignment-free sequence training.
 
 ## Features
-- **Custom Dataset Handling:** Dedicated PyTorch `Dataset` class (`MarathiDataset`) for dynamic loading and processing.
+- **Custom Dataset Handling:** Dedicated PyTorch `Dataset` class (`MarathiDataset`) for dynamic loading, processing, and automatic train/validation splitting (90/10).
 - **Data Augmentation:** Implements random rotations and Gaussian blurring to make the model robust against real-world image variations.
 - **Evaluation Metrics:** Calculates Character Error Rate (CER) using Levenshtein distance to evaluate model performance.
 - **Dynamic Vocabulary:** Automatically generates character mappings based on the provided training labels.
@@ -43,7 +43,9 @@ bengali_ocr/
 │   └── 1_New_Annoatation_Google/
 │       └── 01_marathi_word_images/
 │           └── ...             # Actual .jpg image files
+├── checkpoints/                # Auto-generated directory for saved models
 ├── train.py
+├── dataset.py
 ├── model.py
 └── utils.py
 ```

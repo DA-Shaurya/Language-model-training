@@ -1,7 +1,15 @@
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+*venv*/
+.env
 
-# Model weights and datasets
+# Deep Learning / PyTorch Models
+checkpoints/
 *.pth
+*.pt
+
+# Datasets & Images
 marathi/
+bengali/
+*.jpg

@@ -1,0 +1,11 @@
+[33mcommit c181a7768633fcd0719ecd0c85e98d3cef8746d5[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: Shaurya Singh <shauryasingh.singh936@example.com>
+Date:   Wed Apr 15 22:02:37 2026 +0530
+
+    Initial commit - Bengali OCR project
+
+[33mcommit 49d36ad0c14094e83f642b83a77c5191d2f5b355[m
+Author: Shaurya Singh <shauryasingh.singh936@example.com>
+Date:   Thu Apr 9 14:06:53 2026 +0530
+
+    Initial commit: Bengali/Marathi OCR model
