@@ -1,15 +1,13 @@
-# Python
-__pycache__/
-*.py[cod]
-*venv*/
-.env
-
-# Deep Learning / PyTorch Models
-checkpoints/
-*.pth
-*.pt
-
-# Datasets & Images
+# Datasets
 marathi/
-bengali/
-*.jpg
+
+# Model Checkpoints
+checkpoints/
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.env
