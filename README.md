@@ -1,4 +1,4 @@
-# Indic Script OCR (Marathi / Bengali)
+# Indic Script OCR (Marathi)
 
 A PyTorch-based Deep Learning project for Optical Character Recognition (OCR) of Indic scripts, specifically tailored for Marathi and Bengali word images. This project utilizes a Convolutional Recurrent Neural Network (CRNN) architecture combined with Connectionist Temporal Classification (CTC) loss to transcribe images of text into digital strings.
 
