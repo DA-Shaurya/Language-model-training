@@ -1,186 +1,223 @@
+import argparse
 import os
+import sys
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torchvision import transforms
 from tqdm import tqdm
+from PIL import Image
 
-from dataset import MarathiDataset
-from model import OCRModel
-from utils import load_data, create_vocab, SimpleConverter, decode, compute_cer
+from src.ocr.models.crnn import CRNN
+from src.ocr.data.dataset import IIITIndicHWDataset
+from src.ocr.data.transforms import get_train_transforms, get_val_transforms
+from src.ocr.utils.vocab import DevanagariVocab, create_vocab
+from src.ocr.metrics.evaluator import evaluate_metrics
 
-# ─────────────────────────────────────────────
-# CONFIG
-# ─────────────────────────────────────────────
-BASE_PATH   = "marathi/"
-BATCH_SIZE  = 8
-EPOCHS      = 30
-LR          = 3e-4
-GRAD_CLIP   = 5.0
-VAL_SPLIT   = 0.1
-NUM_WORKERS = 0        # Must stay 0 on Windows — multiprocessing requires __main__ guard
-SAVE_DIR    = "checkpoints"
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Train Devanagari Handwriting OCR Model (ResNet34 + SE-Attention + BiLSTM + CTC)"
+    )
+    parser.add_argument("--data-dir", type=str, default="marathi", help="Path to dataset directory")
+    parser.add_argument("--train-images", type=str, default="marathi/file/train_images.txt")
+    parser.add_argument("--train-labels", type=str, default="marathi/file/train_labels.txt")
+    parser.add_argument("--batch-size", type=int, default=16, help="Batch size for training")
+    parser.add_argument("--epochs", type=int, default=30, help="Number of training epochs")
+    parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
+    parser.add_argument("--weight-decay", type=float, default=1e-4, help="Weight decay")
+    parser.add_argument("--grad-clip", type=float, default=5.0, help="Gradient clipping norm")
+    parser.add_argument("--val-split", type=float, default=0.1, help="Validation set split fraction")
+    parser.add_argument("--no-attention", action="store_true", help="Disable SE-Attention (ablation baseline)")
+    parser.add_argument("--save-dir", type=str, default="checkpoints", help="Directory to save model checkpoints")
+    parser.add_argument("--dry-run", action="store_true", help="Run a fast 1-batch dry run for testing")
+    parser.add_argument("--num-workers", type=int, default=0, help="DataLoader num_workers")
+    return parser.parse_args()
+
+
+def load_file_list(file_path: str):
+    if not os.path.exists(file_path):
+        return []
+    with open(file_path, "r", encoding="utf-8") as f:
+        return [line.strip() for line in f if line.strip()]
+
+
+def generate_synthetic_demo_data(data_dir: str):
+    os.makedirs(os.path.join(data_dir, "file"), exist_ok=True)
+    os.makedirs(os.path.join(data_dir, "dummy_images"), exist_ok=True)
+
+    dummy_images = []
+    dummy_labels = ["मराठी", "देवनागरी", "भारत", "गणेश", "महाराष्ट्र"] * 10
+
+    for i, label in enumerate(dummy_labels):
+        rel_path = f"dummy_images/sample_{i}.jpg"
+        full_path = os.path.join(data_dir, rel_path)
+        if not os.path.exists(full_path):
+            img = Image.new("RGB", (640, 32), color=(245, 245, 245))
+            img.save(full_path)
+        dummy_images.append(rel_path)
+
+    return dummy_images, dummy_labels
 
 
 def main():
-    os.makedirs(SAVE_DIR, exist_ok=True)
+    args = parse_args()
+    os.makedirs(args.save_dir, exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    print(f"[INFO] Device: {device} | SE-Attention: {not args.no_attention}")
 
-    # ─────────────────────────────────────────
-    # DATA
-    # ─────────────────────────────────────────
-    train_imgs, train_labels = load_data(
-        "marathi/file/train_images.txt",
-        "marathi/file/train_labels.txt",
-    )
-    train_imgs = [BASE_PATH + p for p in train_imgs]
-    print(train_imgs[0], "→ exists:", os.path.exists(train_imgs[0]))
+    # Load dataset index files
+    raw_images = load_file_list(args.train_images)
+    raw_labels = load_file_list(args.train_labels)
 
-    # ─────────────────────────────────────────
-    # VOCAB
-    # ─────────────────────────────────────────
-    vocab       = create_vocab(train_labels)
-    num_classes = len(vocab) + 1   # +1 for CTC blank (index 0)
-    converter   = SimpleConverter(vocab)
-    print(f"Vocab size: {len(vocab)}  |  num_classes: {num_classes}")
+    if not raw_images or not raw_labels:
+        print(f"[WARNING] Dataset text files not found at {args.train_images}. Generating synthetic demo dataset.")
+        raw_images, raw_labels = generate_synthetic_demo_data(args.data_dir)
 
-    # ─────────────────────────────────────────
-    # TRANSFORMS  (augmented for train, clean for val)
-    # ─────────────────────────────────────────
-    train_transform = transforms.Compose([
-        transforms.Resize((32, 640)),
-        transforms.RandomRotation(3),
-        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2),
-        transforms.RandomAffine(degrees=0, translate=(0.02, 0.02), shear=2),
-        transforms.GaussianBlur(kernel_size=3),
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-    ])
+    # Ensure paths prefix
+    image_paths = [img if img.startswith(args.data_dir) else os.path.join(args.data_dir, img) for img in raw_images]
 
-    val_transform = transforms.Compose([
-        transforms.Resize((32, 640)),
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-    ])
+    # Create Vocabulary
+    vocab_list = create_vocab(raw_labels)
+    vocab = DevanagariVocab(vocab_list)
+    num_classes = len(vocab)
+    print(f"[INFO] Vocabulary Size: {len(vocab_list)} characters | Total Classes (with CTC blank): {num_classes}")
 
-    # ─────────────────────────────────────────
-    # TRAIN / VAL SPLIT
-    # ─────────────────────────────────────────
-    n_total   = len(train_imgs)
-    n_val     = max(1, int(n_total * VAL_SPLIT))
+    # Transforms & Datasets
+    train_tf = get_train_transforms()
+    val_tf = get_val_transforms()
+
+    n_total = len(image_paths)
+    n_val = max(1, int(n_total * args.val_split))
     train_idx = list(range(n_total - n_val))
-    val_idx   = list(range(n_total - n_val, n_total))
+    val_idx = list(range(n_total - n_val, n_total))
 
-    train_dataset = MarathiDataset(
-        [train_imgs[i] for i in train_idx],
-        [train_labels[i] for i in train_idx],
-        transform=train_transform,
+    train_dataset = IIITIndicHWDataset(
+        [image_paths[i] for i in train_idx],
+        [raw_labels[i] for i in train_idx],
+        transform=train_tf,
     )
-    val_dataset = MarathiDataset(
-        [train_imgs[i] for i in val_idx],
-        [train_labels[i] for i in val_idx],
-        transform=val_transform,
+    val_dataset = IIITIndicHWDataset(
+        [image_paths[i] for i in val_idx],
+        [raw_labels[i] for i in val_idx],
+        transform=val_tf,
     )
 
     train_loader = DataLoader(
-        train_dataset, batch_size=BATCH_SIZE, shuffle=True,
-        num_workers=NUM_WORKERS, pin_memory=(device.type == "cuda"),
+        train_dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.num_workers,
+        pin_memory=(device.type == "cuda"),
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=BATCH_SIZE, shuffle=False,
-        num_workers=NUM_WORKERS, pin_memory=(device.type == "cuda"),
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        pin_memory=(device.type == "cuda"),
     )
 
-    print(f"Train samples: {len(train_dataset)}  |  Val samples: {len(val_dataset)}")
+    print(f"[INFO] Train Samples: {len(train_dataset)} | Val Samples: {len(val_dataset)}")
 
-    # ─────────────────────────────────────────
-    # MODEL / LOSS / OPTIMISER / SCHEDULER
-    # ─────────────────────────────────────────
-    model     = OCRModel(num_classes, dropout=0.3).to(device)
-    criterion = nn.CTCLoss(blank=0, zero_infinity=True)
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=3
-    )
+    # Model, Loss, Optimizer
+    model = CRNN(num_classes=num_classes, use_attention=not args.no_attention).to(device)
+    criterion = nn.CTCLoss(blank=vocab.blank_idx, zero_infinity=True)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=3)
 
-    best_cer   = float("inf")
+    use_amp = device.type in ["cuda", "cpu"]
+    scaler = torch.amp.GradScaler(device.type, enabled=(device.type == "cuda"))
+
+    best_cer = float("inf")
     best_epoch = -1
 
-    # ─────────────────────────────────────────
-    # TRAINING LOOP
-    # ─────────────────────────────────────────
-    for epoch in range(EPOCHS):
+    for epoch in range(args.epochs):
         model.train()
         epoch_loss = 0.0
-        skipped    = 0
+        skipped = 0
 
-        loop = tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS}")
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{args.epochs}")
+        for imgs, labels in pbar:
+            imgs = imgs.to(device)
 
-        for imgs, labels in loop:
-            imgs      = imgs.to(device)
-            preds     = model(imgs)           # (T, B, C)
-            preds_log = preds.log_softmax(2)
+            with torch.amp.autocast(device.type, enabled=(device.type == "cuda")):
+                preds = model(imgs)  # (T, B, num_classes)
+                preds_log = preds.log_softmax(2)
 
-            targets, target_lengths = converter.encode_batch(labels)
-            targets        = targets.to(device)
-            target_lengths = target_lengths.to(device)
+                targets, target_lengths = vocab.encode_batch(labels)
+                targets = targets.to(device)
+                target_lengths = target_lengths.to(device)
+                input_lengths = torch.full((imgs.size(0),), preds_log.size(0), dtype=torch.long, device=device)
 
-            input_lengths = torch.full(
-                (imgs.size(0),), preds_log.size(0), dtype=torch.long, device=device
-            )
+                if (target_lengths == 0).any() or target_lengths.max() > preds_log.size(0):
+                    skipped += 1
+                    continue
 
-            if (target_lengths == 0).any() or target_lengths.max() > preds_log.size(0):
-                skipped += 1
-                continue
-
-            loss = criterion(preds_log, targets, input_lengths, target_lengths)
+                loss = criterion(preds_log, targets, input_lengths, target_lengths)
 
             optimizer.zero_grad()
-            loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+            scaler.step(optimizer)
+            scaler.update()
 
             epoch_loss += loss.item()
-            loop.set_postfix(loss=f"{loss.item():.4f}")
+            pbar.set_postfix(loss=f"{loss.item():.4f}")
+
+            if args.dry_run:
+                print("\n[DRY RUN] Passed 1 batch dry-run successfully.")
+                return
 
         avg_loss = epoch_loss / max(1, len(train_loader) - skipped)
-        print(f"\nEpoch {epoch+1} | Avg Loss: {avg_loss:.4f} | Skipped: {skipped}")
 
-        torch.save(model.state_dict(), os.path.join(SAVE_DIR, f"model_epoch_{epoch+1}.pth"))
-
-        # ── VALIDATION ────────────────────────
+        # Validation Phase
         model.eval()
         all_preds, all_gts = [], []
 
         with torch.no_grad():
             for val_imgs, val_labels in val_loader:
-                val_imgs   = val_imgs.to(device)
-                preds      = model(val_imgs).log_softmax(2)
-                pred_texts = decode(preds, converter)
+                val_imgs = val_imgs.to(device)
+                preds = model(val_imgs)
+                pred_texts = vocab.decode_greedy(preds)
                 all_preds.extend(pred_texts)
                 all_gts.extend(val_labels)
 
-        cer = compute_cer(all_preds, all_gts)
-        print(f"Epoch {epoch+1} | Val CER: {cer:.4f}")
+        metrics = evaluate_metrics(all_preds, all_gts)
+        cer = metrics["cer"]
+        char_acc = metrics["char_accuracy"] * 100
+        word_acc = metrics["word_accuracy"] * 100
 
-        print("\n--- Sample Predictions ---")
-        for i in range(min(5, len(all_preds))):
-            print(f"  GT: {all_gts[i]}")
-            print(f"  PR: {all_preds[i]}")
-            print("  -----")
+        print(
+            f"Epoch {epoch+1:02d}/{args.epochs:02d} | Avg Loss: {avg_loss:.4f} | "
+            f"Val CER: {cer:.4f} | Char Acc: {char_acc:.2f}% | Word Acc: {word_acc:.2f}%"
+        )
 
         if cer < best_cer:
-            best_cer, best_epoch = cer, epoch + 1
-            torch.save(model.state_dict(), os.path.join(SAVE_DIR, "best_model.pth"))
-            print(f"  ✓ New best model saved (CER={best_cer:.4f})")
+            best_cer = cer
+            best_epoch = epoch + 1
+            best_model_path = os.path.join(args.save_dir, "best_model.pth")
+            torch.save(
+                {
+                    "epoch": epoch + 1,
+                    "model_state": model.state_dict(),
+                    "optimizer_state": optimizer.state_dict(),
+                    "vocab": vocab.vocab,
+                    "cer": cer,
+                    "word_acc": word_acc,
+                    "use_attention": not args.no_attention,
+                },
+                best_model_path,
+            )
+            print(f"  [SAVED] New best model checkpoint saved to {best_model_path}")
 
         scheduler.step(cer)
-        print(f"  LR: {optimizer.param_groups[0]['lr']:.2e}\n")
 
-    print(f"\nTraining complete. Best CER: {best_cer:.4f} at epoch {best_epoch}.")
-    print(f"Best model → {os.path.join(SAVE_DIR, 'best_model.pth')}")
+    print(f"\n[DONE] Training complete. Best CER: {best_cer:.4f} (Epoch {best_epoch}).")
 
 
 if __name__ == "__main__":

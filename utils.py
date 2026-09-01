@@ -1,8 +1,17 @@
-import torch
-import Levenshtein
+"""
+Utility functions wrapper for Devanagari OCR.
+Provides load_data, create_vocab, SimpleConverter, decode, and compute_cer.
+"""
+
+from typing import List, Tuple
+from src.ocr.utils.vocab import DevanagariVocab, SimpleConverter, create_vocab
+from src.ocr.metrics.evaluator import compute_cer, compute_word_accuracy, evaluate_metrics
 
 
-def load_data(img_file, label_file):
+def load_data(img_file: str, label_file: str) -> Tuple[List[str], List[str]]:
+    """
+    Helper function to load image file paths and ground-truth text labels.
+    """
     with open(img_file, "r", encoding="utf-8") as f:
         images = f.read().splitlines()
 
@@ -12,66 +21,20 @@ def load_data(img_file, label_file):
     return images, labels
 
 
-def create_vocab(labels):
-    chars = set()
-    for word in labels:
-        for c in word:
-            chars.add(c)
-    return sorted(list(chars))
-
-
-class SimpleConverter:
-    def __init__(self, vocab):
-        self.char2idx = {c: i + 1 for i, c in enumerate(vocab)}  # 0 = blank
-        self.idx2char = {i + 1: c for i, c in enumerate(vocab)}
-
-    def encode_batch(self, texts):
-        targets = []
-        lengths = []
-
-        for t in texts:
-            encoded = [self.char2idx[c] for c in t if c in self.char2idx]
-            targets.extend(encoded)
-            lengths.append(len(encoded))
-
-        targets = torch.tensor(targets, dtype=torch.long)
-        lengths = torch.tensor(lengths, dtype=torch.long)
-
-        return targets, lengths
-
-
-def decode(preds, converter):
+def decode(preds, converter: SimpleConverter) -> List[str]:
     """
-    CTC greedy decode.
-    BUG FIX: results.append(text) was outside the for-loop due to wrong
-    indentation, so only the very last sequence was ever appended.
+    CTC greedy decoding wrapper.
     """
-    preds = preds.argmax(2)   # (T, B)
-    preds = preds.permute(1, 0)  # (B, T)
-
-    results = []
-
-    for seq in preds:
-        prev = -1
-        text = ""
-
-        for i in seq:
-            i = i.item()
-            if i != prev and i != 0:
-                text += converter.idx2char.get(i, "")
-            prev = i
-
-        results.append(text)   # ← now correctly inside the outer loop
-
-    return results
+    return converter.decode_greedy(preds)
 
 
-def compute_cer(preds, gts):
-    total_dist = 0
-    total_chars = 0
-
-    for p, g in zip(preds, gts):
-        total_dist += Levenshtein.distance(p, g)
-        total_chars += len(g)
-
-    return total_dist / total_chars if total_chars > 0 else 0
+__all__ = [
+    "load_data",
+    "create_vocab",
+    "SimpleConverter",
+    "DevanagariVocab",
+    "decode",
+    "compute_cer",
+    "compute_word_accuracy",
+    "evaluate_metrics",
+]

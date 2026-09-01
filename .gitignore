@@ -1,13 +1,25 @@
-# Datasets
-marathi/
-
-# Model Checkpoints
+# Checkpoints & Model Binaries
 checkpoints/
+*.pth
+*.pt
+*.onnx
 
-# Python artifacts
+# Dataset Files
+marathi/
+bengali_ocr/
+file/
+*.zip
+
+# Python Bytecode & Cache
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-venv/
-.env
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs & Temporary Files
+*.log
+tatus
+repo_temp/
+repo/
