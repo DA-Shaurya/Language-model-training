@@ -3,17 +3,29 @@
 # Devanagari (Marathi) Handwriting OCR
 ### *CRNN with Squeeze-and-Excitation Attention & Connectionist Temporal Classification (CTC)*
 
+[![Conference](https://img.shields.io/badge/ICICCT%202026-Istanbul%2C%20Turkey-darkred?style=for-the-badge)](https://github.com/DA-Shaurya/Language-model-training)
+[![Publication](https://img.shields.io/badge/Status-Published%20%26%20Presented-success?style=for-the-badge)](https://github.com/DA-Shaurya/Language-model-training)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![CER](https://img.shields.io/badge/CER-0.0464%20(95.4%25%20Acc)-brightgreen?style=for-the-badge)]()
 [![Word Accuracy](https://img.shields.io/badge/Word%20Accuracy-83.9%25-blue?style=for-the-badge)]()
 [![Paper Format](https://img.shields.io/badge/Paper-Springer%20LNCS-darkblue?style=for-the-badge)](paper/main.tex)
 
-[**Abstract**](#-abstract) • [**Architecture**](#-architecture) • [**Dataset**](#-dataset--augmentation) • [**Ablation Study**](#-ablation-study) • [**Quickstart**](#-quickstart) • [**Paper Citation**](#-citation)
+[**Abstract**](#-abstract) • [**Conference Publication**](#-conference-publication) • [**Architecture**](#-architecture) • [**Dataset**](#-dataset--augmentation) • [**Ablation Study**](#-ablation-study) • [**Quickstart**](#-quickstart) • [**Paper Citation**](#-citation)
 
 </div>
 
 ---
+
+> [!NOTE]
+> ### 🏆 Published & Presented at ICICCT 2026
+> This research has been presented and published at the **Fourth International Conference on Innovative Computing and Cutting-edge Technologies (ICICCT 2026)**, held on **September 22–24, 2026** in **Istanbul, Turkey** (Technical Session S5).
+>
+> - **Paper Title:** *Deep Learning-Based OCR for Devanagari (Marathi) Script: CRNN with Squeeze-and-Excitation Attention and CTC Decoding*
+> - **Authors:** Shaurya Singh, Subroto Chandra, Dr. Meenal Jabde\*, Dr. C H Patil\*
+> - **Affiliation:** School of Computer Science, Dr. Vishwanath Karad MIT World Peace University, Pune, India
+> - **Session:** Technical Session – S5 (Chaired by Dr. Kumar Abhishek & Dr. Aftab Alam)
+
 
 ## 📌 Abstract
 
@@ -25,7 +37,27 @@ Trained on **111,251 handwritten word images** from the **IIIT-Indic-HW-UC corpu
 - **95.40% Character Accuracy** (**0.0464 Character Error Rate / CER**)
 - **83.90% Exact-Match Word Accuracy** on the 15,000-image held-out test set.
 
-We include a published research paper manuscript prepared in **Springer LNCS format** (`paper/main.tex`), an automated ablation suite (`ablation.py`), test suite (`tests/`), and an interactive Web UI demo (`app.py`).
+We include the complete research paper manuscript prepared in **Springer LNCS format** (`paper/main.tex`), an automated ablation suite (`ablation.py`), test suite (`tests/`), and an interactive Web UI demo (`app.py`).
+
+---
+
+## 🎓 Conference Publication
+
+This research paper was peer-reviewed, accepted, presented, and published at:
+
+- **Conference:** Fourth International Conference on Innovative Computing and Cutting-edge Technologies (ICICCT 2026)
+- **Dates:** September 22 – 24, 2026
+- **Location:** Istanbul, Turkey
+- **Technical Session:** Technical Session – S5
+- **Session Chairs:** Dr. Kumar Abhishek (*National Institute of Technology, India*), Dr. Aftab Alam (*United Arab Emirates University, U.A.E*)
+- **Paper Title:** *Deep Learning-Based OCR for Devanagari (Marathi) Script: CRNN with Squeeze-and-Excitation Attention and CTC Decoding*
+- **Authors:** 
+  - Shaurya Singh
+  - Subroto Chandra
+  - Dr. Meenal Jabde\*
+  - Dr. C H Patil\*
+- **Affiliation:** School of Computer Science, Dr. Vishwanath Karad MIT World Peace University, Pune, India
+- **Manuscript:** Available in [`paper/main.tex`](paper/main.tex)
 
 ---
 
@@ -174,10 +206,12 @@ pytest tests/ -v
 If you find this work or paper useful in your research, please cite:
 
 ```bibtex
-@article{singh2026devanagari,
-  author    = {Shaurya Singh},
-  title     = {Devanagari Handwriting Optical Character Recognition via Channel-Attentive Convolutional Recurrent Networks},
-  journal   = {Springer LNCS Series / GitHub Repository},
+@inproceedings{singh2026devanagari,
+  author    = {Singh, Shaurya and Chandra, Subroto and Jabde, Meenal and Patil, C. H.},
+  title     = {Deep Learning-Based OCR for Devanagari (Marathi) Script: CRNN with Squeeze-and-Excitation Attention and CTC Decoding},
+  booktitle = {Proceedings of the Fourth International Conference on Innovative Computing and Cutting-edge Technologies (ICICCT 2026)},
+  address   = {Istanbul, Turkey},
+  month     = {September},
   year      = {2026},
   url       = {https://github.com/DA-Shaurya/Language-model-training}
 }
